@@ -1,11 +1,12 @@
-# Kubectl NLP Service
+# Kubectl AI Agent
 
 A FastAPI-based service that accepts natural language queries and uses an LLM (like OpenAI's GPT) to generate corresponding `kubectl` commands. It can optionally execute these commands.
 
 ## Features
 
 *   FastAPI web framework
-*   LangChain integration for LLM interaction
+*   LangChain integration for LLM interaction. 
+*   This project can utilize any LLM model server provider using an OpenAI compatible API (e.g., Ollama, DeepSeek, Mistral via their respective servers) by setting the `OPENAI_BASE_URL` environment variable.
 *   Input sanitization and basic command safety checks
 *   Optional command execution via `asyncio.create_subprocess_exec`
 *   Caching for LLM responses (`cachetools`)
@@ -22,10 +23,9 @@ A FastAPI-based service that accepts natural language queries and uses an LLM (l
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url> 
-    cd <repository-directory> 
+    git clone https://github.com/mrankitvish/ai-agent-kubectl.git 
+    cd ai-agent-kubectl
     ```
-    *(Replace `<repository-url>` and `<repository-directory>` with the actual URL and directory name)*
 
 2.  **(Recommended) Create and activate a virtual environment:**
     ```bash
@@ -54,6 +54,27 @@ Start the server using Uvicorn:
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 *(Note: Host and port can be configured via `HOST` and `PORT` environment variables)*
+
+## Running with Docker
+
+Alternatively, you can run the service using Docker and Docker Compose.
+
+1.  **Ensure Docker and Docker Compose are installed.**
+2.  **Configure environment variables:**
+    *   Copy `.env-sample` to a new file named `.env` in the project root.
+    *   Edit `.env` and provide the necessary values (especially `OPENAI_API_KEY` and a secure `API_AUTH_KEY`).
+3.  **Build and run the container:**
+    ```bash
+    docker-compose up --build -d
+    ```
+    *(The `-d` flag runs the container in detached mode)*
+
+The service will be available at `http://localhost:8000`.
+
+To stop the service:
+```bash
+docker-compose down
+```
 
 ## API Usage
 
@@ -89,6 +110,10 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 ### Endpoint: `GET /health`
 
 *   Returns `{"status": "healthy"}`.
+
+### Endpoint: `GET /metrics`
+
+*   Exposes Prometheus metrics for monitoring the application's performance and request handling.
 
 ## Configuration
 

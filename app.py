@@ -16,6 +16,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator # Added for Prometheus
 
 # --- Configuration ---
 load_dotenv()
@@ -117,6 +118,10 @@ app = FastAPI(title="Kubectl NLP Service", version="1.0.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# --- Prometheus Instrumentation ---
+# Expose /metrics endpoint
+Instrumentator().instrument(app).expose(app)
 
 # --- API Key Authentication ---
 async def verify_api_key(x_api_key: Optional[str] = Header(None)):

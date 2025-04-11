@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  kubectl-agent:
+    build: . # Build the image from the Dockerfile in the current directory
+    container_name: kubectl-agent-service
+    ports:
+      - "8000:8000" # Map host port 8000 to container port 8000
+    env_file:
+      - .env # Load environment variables from a .env file in the same directory
+    # Optional: Add volumes if you need persistent storage or want to mount local files
+    # volumes:
+    #   - .:/app # Example: Mount current directory to /app (useful for development, might overwrite container files)
+    restart: unless-stopped # Restart policy
+    # Optional: Add healthcheck if needed
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 15s
+
+# Note: Create a '.env' file in this directory based on '.env-sample'
+# and populate it with your actual API keys and desired settings.
+# Example .env file:
+# OPENAI_API_KEY=your_openai_api_key_here
+# OPENAI_BASE_URL= # Optional: Your OpenAI compatible API base URL
+# OPENAI_MODEL=gpt-4 # Optional: Specify a model
+# API_AUTH_KEY=your_secure_api_auth_key # Replace with a strong key
+# CACHE_MAXSIZE=200 # Optional: Override default
+# CACHE_TTL=600 # Optional: Override default
+# LLM_TIMEOUT=90 # Optional: Override default
+# EXECUTION_TIMEOUT=45 # Optional: Override default
+# RATE_LIMIT=20/minute # Optional: Override default
+# LOG_LEVEL=DEBUG # Optional: Override default

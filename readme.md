@@ -14,6 +14,10 @@ A FastAPI-based service that accepts natural language queries and uses an LLM (l
 *   Configurable via environment variables
 *   Health check endpoint (`/health`)
 
+## Architecture Diagram
+
+![Architecture Diagram](assets/diagram.svg)
+
 ## Setup
 
 1.  **Clone the repository:**

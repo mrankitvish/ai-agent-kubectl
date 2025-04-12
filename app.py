@@ -1,6 +1,8 @@
 import os
 import asyncio
 import logging
+import time
+import datetime
 import shlex
 from typing import Optional, Dict, Any
 
@@ -146,11 +148,20 @@ class Query(BaseModel):
     execute: bool = Field(False, description="Whether to execute the generated command.")
 
 # --- Response Body Schema ---
+class ExecutionMetadata(BaseModel):
+    start_time: str
+    end_time: str
+    duration_ms: float
+    success: bool
+    error_type: Optional[str] = None
+    error_code: Optional[str] = None
+
 class CommandResponse(BaseModel):
     kubectl_command: str
-    execution_result: Optional[str] = None
-    execution_error: Optional[str] = None
+    execution_result: Optional[Dict[str, Any]] = None
+    execution_error: Optional[Dict[str, Any]] = None
     from_cache: bool = False
+    metadata: ExecutionMetadata
 
 # --- Helper Functions ---
 async def run_llm_chain_async(query: str) -> str:
@@ -185,14 +196,16 @@ async def get_command_from_llm(sanitized_query: str) -> str:
     logger.debug(f"Calling LLM for query: {sanitized_query}")
     return await run_llm_chain_async(sanitized_query)
 
-async def execute_command_async(command: str) -> Dict[str, str]:
+async def execute_command_async(command: str) -> Dict[str, Any]:
     """Executes the command asynchronously and securely."""
+    start_time = datetime.datetime.utcnow().isoformat()
+    start_ts = time.time()
     logger.info(f"Attempting to execute command: {command}")
     try:
         # IMPORTANT: Use shlex.split to prevent shell injection vulnerabilities
         args = shlex.split(command)
         if args[0] != 'kubectl': # Double check
-             raise ValueError("Command does not start with kubectl")
+             raise ValueError("invalid_command", "Command does not start with kubectl")
 
         process = await asyncio.create_subprocess_exec(
             *args,
@@ -201,15 +214,45 @@ async def execute_command_async(command: str) -> Dict[str, str]:
         )
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=EXECUTION_TIMEOUT)
 
-        result = {}
+        end_ts = time.time()
+        metadata = {
+            "start_time": start_time,
+            "end_time": datetime.datetime.utcnow().isoformat(),
+            "duration_ms": (end_ts - start_ts) * 1000,
+            "success": process.returncode == 0
+        }
+
+        result = {"metadata": metadata}
         if process.returncode == 0:
             result_stdout = stdout.decode().strip()
             logger.info(f"Command executed successfully. Output:\n{result_stdout}")
-            result["execution_result"] = result_stdout
+            # Parse kubectl output into structured JSON if possible
+            try:
+                if "\n" in result_stdout:  # Likely tabular output
+                    lines = result_stdout.splitlines()
+                    headers = [h.lower() for h in lines[0].split()]
+                    items = []
+                    for line in lines[1:]:
+                        values = line.split()
+                        items.append(dict(zip(headers, values)))
+                    result["execution_result"] = {"type": "table", "data": items}
+                else:
+                    result["execution_result"] = {"type": "raw", "data": result_stdout}
+            except Exception as parse_err:
+                logger.warning(f"Failed to parse kubectl output: {parse_err}")
+                result["execution_result"] = {"type": "raw", "data": result_stdout}
         else:
             result_stderr = stderr.decode().strip()
             logger.error(f"Command execution failed with code {process.returncode}. Error:\n{result_stderr}")
-            result["execution_error"] = result_stderr
+            result["execution_error"] = {
+                "type": "kubectl_error",
+                "code": str(process.returncode),
+                "message": result_stderr
+            }
+            result["metadata"].update({
+                "error_type": "kubectl_error",
+                "error_code": str(process.returncode)
+            })
         return result
 
     except asyncio.TimeoutError:
@@ -281,7 +324,12 @@ async def get_kubectl_command(q: Query, request: Request, response: Response):
         logger.exception(f"Unexpected error processing query '{sanitized_query}': {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error processing request")
 
-    execution_data = {}
+    execution_data = {"metadata": {
+        "start_time": datetime.datetime.utcnow().isoformat(),
+        "end_time": None,
+        "duration_ms": None,
+        "success": None
+    }}
     if q.execute:
         # No need to re-validate if it came from cache/LLM (already validated)
         execution_data = await execute_command_async(command)
@@ -290,7 +338,8 @@ async def get_kubectl_command(q: Query, request: Request, response: Response):
         kubectl_command=command,
         execution_result=execution_data.get("execution_result"),
         execution_error=execution_data.get("execution_error"),
-        from_cache=from_cache
+        from_cache=from_cache,
+        metadata=execution_data["metadata"]
     )
 
 @app.get("/health",

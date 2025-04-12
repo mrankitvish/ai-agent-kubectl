@@ -48,7 +48,8 @@ if not OPENAI_API_KEY:
 prompt_template_str = """
 You are an expert in Kubernetes.
 Given the following user request, provide a single-line kubectl command that exactly fulfils the need.
-Do not add any commentary—just output the kubectl command. Ensure the command is safe and does not contain shell metacharacters like ;, &&, ||, etc.
+Do not add any commentary or code block markers (```)—just output the plain kubectl command.
+Ensure the command is safe and does not contain shell metacharacters like ;, &&, ||, etc.
 User Request: {query}
 Kubectl Command:"""
 
@@ -84,6 +85,9 @@ class KubectlOutputParser(StrOutputParser):
     def parse(self, text: str) -> str:
         # Use the parent StrOutputParser to get the raw string output
         command = super().parse(text).strip()
+        # Remove any code block markers (```) if present
+        if command.startswith('```') and command.endswith('```'):
+            command = command[3:-3].strip()
         # Apply safety checks
         if not is_safe_kubectl_command(command):
             raise ValueError(f"Generated command failed safety checks: {command}")

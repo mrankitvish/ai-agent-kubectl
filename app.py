@@ -48,17 +48,25 @@ if not OPENAI_API_KEY:
 
 # --- LLM Setup ---
 prompt_template_str = """
-You are an expert in Kubernetes.
-Given the following user request, provide a single-line kubectl command that exactly fulfils the need.
-Do not add any commentary or code block markers (```)—just output the plain kubectl command.
-Ensure the command is safe and does not contain shell metacharacters like ;, &&, ||, etc.
+You are a Kubernetes CLI specialist.
+When given a user request, output exactly one valid, single-line `kubectl` command that fulfils it.
+Do not include comments, explanations, or shell operators (`;`, `&&`, `||`, (```) etc.).
+Only output the command itself, nothing else.
 User Request: {query}
-Kubectl Command:"""
+Kubectl Command:
+"""
 
 # Basic input sanitization (can be expanded)
 def sanitize_query(query: str) -> str:
-    # Simple example: strip leading/trailing whitespace
-    return query.strip()
+    """
+    Normalize multi-line query to a single line and remove excessive whitespace.
+    """
+    # Replace newlines and tabs with spaces
+    normalized = query.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+    # Collapse multiple spaces into one
+    normalized = ' '.join(normalized.split())
+    return normalized.strip()
+
 
 # Basic command validation (can be expanded)
 def is_safe_kubectl_command(command: str) -> bool:

@@ -107,7 +107,7 @@ try:
         llm_kwargs["base_url"] = OPENAI_BASE_URL
 
     llm = ChatOpenAI(**llm_kwargs)
-    chain = LLMChain(llm=llm, prompt=template, output_parser=KubectlOutputParser())
+    chain = template | llm | KubectlOutputParser()
 except Exception as e:
     logger.exception("Failed to initialize LangChain components.")
     # Decide if the app should exit or continue in a degraded state
@@ -145,7 +145,9 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)):
 # --- Request Body Schema ---
 class Query(BaseModel):
     query: str = Field(..., min_length=3, description="Natural language query for kubectl.")
-    execute: bool = Field(False, description="Whether to execute the generated command.")
+
+class ExecuteRequest(BaseModel):
+    execute: str = Field(..., description="kubectl command to execute.")
 
 # --- Response Body Schema ---
 class ExecutionMetadata(BaseModel):
@@ -169,13 +171,9 @@ async def run_llm_chain_async(query: str) -> str:
     if not chain:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="LLM Chain not initialized")
     try:
-        # Use run_in_executor for potentially blocking sync code
-        loop = asyncio.get_running_loop()
-        # Langchain's arun might be truly async depending on the LLM provider implementation
-        # Using run_in_executor is safer if unsure. If arun is confirmed async, use it directly.
-        # command = await asyncio.wait_for(chain.arun(query), timeout=LLM_TIMEOUT)
+        # Use the new RunnableSequence interface with async invocation
         command = await asyncio.wait_for(
-            loop.run_in_executor(None, chain.run, query),
+            chain.ainvoke({"query": query}),
             timeout=LLM_TIMEOUT
         )
         logger.info(f"LLM generated command for query '{query}': {command}")
@@ -295,7 +293,7 @@ async def get_kubectl_command(q: Query, request: Request, response: Response):
     Takes a natural language query, generates a kubectl command using an LLM,
     validates it, and optionally executes it.
     """
-    logger.info(f"Received query: '{q.query}', Execute: {q.execute}")
+    logger.info(f"Received query: '{q.query}'")
     sanitized_query = sanitize_query(q.query)
 
     from_cache = False
@@ -326,13 +324,10 @@ async def get_kubectl_command(q: Query, request: Request, response: Response):
 
     execution_data = {"metadata": {
         "start_time": datetime.datetime.utcnow().isoformat(),
-        "end_time": None,
-        "duration_ms": None,
-        "success": None
+        "end_time": datetime.datetime.utcnow().isoformat(),
+        "duration_ms": 0.0,
+        "success": True
     }}
-    if q.execute:
-        # No need to re-validate if it came from cache/LLM (already validated)
-        execution_data = await execute_command_async(command)
 
     return CommandResponse(
         kubectl_command=command,
@@ -349,6 +344,41 @@ async def get_kubectl_command(q: Query, request: Request, response: Response):
 async def health_check():
     # Basic health check, can be expanded (e.g., check LLM connectivity)
     return {"status": "healthy"}
+
+@app.post("/execute",
+          response_model=CommandResponse,
+          dependencies=[Depends(verify_api_key)],
+          summary="Execute a kubectl command",
+          responses={
+              200: {"description": "Command executed successfully"},
+              400: {"description": "Invalid command"},
+              401: {"description": "Unauthorized (Missing or invalid API Key)"},
+              429: {"description": "Rate limit exceeded"},
+              500: {"description": "Internal server error"},
+              504: {"description": "Gateway timeout (execution)"}
+          })
+@limiter.limit(RATE_LIMIT)
+async def execute_kubectl_command(req: ExecuteRequest, request: Request, response: Response):
+    """
+    Executes a provided kubectl command.
+    """
+    logger.info(f"Received execute request for command: '{req.execute}'")
+    
+    if not is_safe_kubectl_command(req.execute):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Command failed safety checks"
+        )
+    
+    execution_data = await execute_command_async(req.execute)
+    
+    return CommandResponse(
+        kubectl_command=req.execute,
+        execution_result=execution_data.get("execution_result"),
+        execution_error=execution_data.get("execution_error"),
+        from_cache=False,
+        metadata=execution_data["metadata"]
+    )
 
 # --- Uvicorn Entrypoint ---
 if __name__ == "__main__":

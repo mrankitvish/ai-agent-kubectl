@@ -110,6 +110,18 @@ See `.env-sample` for all available environment variables. Key variables:
      -d '{"execute":"kubectl get pods"}'
    ```
 
+## Architecture
+
+![Architecture Diagram](./assets/diagram.svg)
+
+The system follows a clean architecture with these main components:
+
+1. **API Layer**: FastAPI endpoints handling HTTP requests
+2. **Service Layer**: Business logic for command generation and execution
+3. **LLM Integration**: OpenAI API for natural language processing
+4. **Caching Layer**: TTLCache for performance optimization
+5. **Execution Layer**: Async subprocess for safe command execution
+
 ## Recent Changes
 
 - Separated command generation and execution into distinct endpoints

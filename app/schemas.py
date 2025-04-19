@@ -1,11 +1,11 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 
 class Query(BaseModel):
     query: str = Field(..., min_length=3, description="Natural language query for kubectl.")
 
 class ExecuteRequest(BaseModel):
-    execute: str = Field(..., description="kubectl command to execute.")
+    execute: str = Field(..., description="kubectl command to execute.") # Keep as single string for /execute
 
 class ExecutionMetadata(BaseModel):
     start_time: str
@@ -16,7 +16,8 @@ class ExecutionMetadata(BaseModel):
     error_code: Optional[str] = None
 
 class CommandResponse(BaseModel):
-    kubectl_command: str
+    # Change kubectl_command to always be a list of strings
+    kubectl_command: List[str] = Field(..., description="List of generated kubectl commands.")
     execution_result: Optional[Dict[str, Any]] = None
     execution_error: Optional[Dict[str, Any]] = None
     from_cache: bool = False

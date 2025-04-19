@@ -26,7 +26,7 @@ Generates a kubectl command from natural language.
 **Response:**
 ```json
 {
-  "kubectl_command": "string",
+  "kubectl_command": { "string" },
   "from_cache": "boolean",
   "metadata": {
     "start_time": "string",
